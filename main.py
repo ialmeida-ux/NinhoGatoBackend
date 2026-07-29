@@ -119,20 +119,35 @@ def verificar_status(txid: str):
     return {"txid": txid, "status": tx_data["status"]}
 
 # Rota que a Efí chamará quando o Pix for pago
-@app.post("/webhook/pix")
+# A nossa "Rede de Captura": Aceita GET, POST, com ou sem /pix, com ou sem barra final.
+@app.api_route("/webhook", methods=["GET", "POST"])
+@app.api_route("/webhook/", methods=["GET", "POST"])
+@app.api_route("/webhook/pix", methods=["GET", "POST"])
+@app.api_route("/webhook/pix/", methods=["GET", "POST"])
 async def efi_webhook(request: Request):
-    payload = await request.json()
+    # 1. Se a Efí mandar um GET apenas para testar se a URL existe, devolvemos 200 OK
+    if request.method == "GET":
+        print("EFÍ FEZ UM PING DE VALIDAÇÃO (GET)")
+        return {"status": "200 OK"}
     
-    # A Efí envia um array 'pix' com os pagamentos recebidos
-    if "pix" in payload:
-        for pagamento in payload["pix"]:
-            txid = pagamento.get("txid")
-            if txid:
-                tx_data = get_transaction(txid)
-                if tx_data:
-                    tx_data["status"] = "PAGO"
-                    tx_data["payment"] = True # Flag que autoriza exibir no mural
-                    save_transaction(txid, tx_data)
+    # 2. Se for um POST (o pagamento real chegando)
+    try:
+        payload = await request.json()
+        print("WEBHOOK RECEBIDO DA EFÍ:", payload)
+    
+        # A Efí envia um array 'pix' com os pagamentos recebidos
+        if "pix" in payload:
+            for pagamento in payload["pix"]:
+                txid = pagamento.get("txid")
+                if txid:
+                    tx_data = get_transaction(txid)
+                    if tx_data:
+                        tx_data["status"] = "PAGO"
+                        tx_data["payment"] = True # Flag que autoriza exibir no mural
+                        save_transaction(txid, tx_data)
+    except Exception as e:
+            print("Erro interno ao processar o payload da Efí:", e)
+            
     return {"status": "200 OK"}
 
 @app.get("/doacoes")
