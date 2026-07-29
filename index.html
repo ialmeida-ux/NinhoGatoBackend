@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Doações</title>
+    <style>
+        body { font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px; background-color: #f4f4f5; margin: 0; }
+        
+        .nav-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-btn { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .nav-btn:hover { background: #2563eb; }
+
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 450px; width: 100%; box-sizing: border-box;}
+        
+        .form-group { text-align: left; margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.9rem; margin-bottom: 5px; color: #374151; font-weight: bold; }
+        .checkbox-group { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: normal; cursor: pointer; }
+        
+        input[type="text"], input[type="number"], textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        input:disabled { background-color: #e5e7eb; cursor: not-allowed; }
+        textarea { resize: vertical; height: 80px; }
+        
+        button.action-btn { width: 100%; background-color: #10b981; color: white; border: none; padding: 12px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        button.action-btn:hover { background-color: #059669; }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; }
+
+        .hidden { display: none !important; }
+        .qr-code { width: 250px; height: 250px; margin: 20px auto; }
+        .copia-cola { font-size: 0.8rem; word-break: break-all; background: #f3f4f6; padding: 10px; border-radius: 4px; border: 1px solid #d1d5db; }
+        .success { color: #10b981; font-weight: bold; font-size: 1.2rem; }
+
+        /* Estilos do Mural */
+        .donation-card { background: #f9fafb; border-left: 4px solid #10b981; padding: 15px; margin-bottom: 15px; text-align: left; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .donation-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+        .donation-name { font-weight: bold; color: #1f2937; }
+        .donation-value { color: #10b981; font-weight: bold; font-size: 1.1rem; }
+        .donation-msg { font-style: italic; color: #4b5563; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+
+<div class="nav-bar">
+    <button class="nav-btn" onclick="showScreen('tela-doar')">Fazer Doação</button>
+    <button class="nav-btn" onclick="showScreen('tela-mural'); carregarDoacoes();">Mural de Doações</button>
+</div>
+
+<!-- TELA 1: FAZER DOAÇÃO -->
+<div id="tela-doar" class="card">
+    <h2>Apoie o Projeto</h2>
+    
+    <div id="form-container">
+        <div class="form-group checkbox-group">
+            <input type="checkbox" id="anonimo" onchange="toggleNome()">
+            <label for="anonimo" style="margin: 0;">Quero doar anonimamente</label>
+        </div>
+
+        <div class="form-group">
+            <label>Seu Nome</label>
+            <input type="text" id="nome" placeholder="Digite seu nome">
+        </div>
+
+        <div class="form-group">
+            <label>Mensagem (Opcional)</label>
+            <textarea id="mensagem" placeholder="Deixe uma mensagem de apoio!"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Valor (R$)</label>
+            <input type="number" id="valor" placeholder="10.00" value="1.00" step="0.01">
+        </div>
+
+        <button onclick="gerarPix()" id="btn-gerar" class="action-btn">Gerar Pix</button>
+    </div>
+
+    <!-- Área do QR Code -->
+    <div id="pix-container" class="hidden">
+        <p>Escaneie o QR Code abaixo:</p>
+        <img id="qr-image" class="qr-code" src="" alt="QR Code Pix">
+        <p>Ou utilize o Pix Copia e Cola:</p>
+        <div id="copia-cola-text" class="copia-cola"></div>
+        <br>
+        <p id="status-texto">Aguardando pagamento... ⏳</p>
+        <button onclick="resetForm()" class="nav-btn" style="margin-top: 15px;">Cancelar</button>
+    </div>
+
+    <div id="sucesso-container" class="hidden">
+        <p class="success">✅ Doação Confirmada!</p>
+        <p>Muito obrigado pelo seu apoio.</p>
+        <button onclick="resetForm()" class="nav-btn" style="margin-top: 15px;">Nova Doação</button>
+    </div>
+</div>
+
+<!-- TELA 2: MURAL DE DOAÇÕES -->
+<div id="tela-mural" class="card hidden">
+    <h2>Mural de Doadores ❤️</h2>
+    <p style="font-size: 0.9rem; color: #6b7280; margin-bottom: 20px;">Agradecemos a todos que apoiam nossa causa!</p>
+    
+    <div id="lista-doacoes">
+        <!-- Os cards serão injetados aqui via JavaScript -->
+        <p>Carregando doações...</p>
+    </div>
+</div>
+
+<script>
+    const API_URL = "";
+    let pollInterval;
+
+    // --- LÓGICA DE INTERFACE ---
+    function showScreen(screenId) {
+        document.getElementById('tela-doar').classList.add('hidden');
+        document.getElementById('tela-mural').classList.add('hidden');
+        document.getElementById(screenId).classList.remove('hidden');
+    }
+
+    function toggleNome() {
+        const isAnonimo = document.getElementById('anonimo').checked;
+        const inputNome = document.getElementById('nome');
+        inputNome.disabled = isAnonimo;
+        if (isAnonimo) {
+            inputNome.value = ""; // Limpa o campo se marcou anônimo
+        }
+    }
+
+    function resetForm() {
+        clearInterval(pollInterval);
+        document.getElementById('form-container').classList.remove('hidden');
+        document.getElementById('pix-container').classList.add('hidden');
+        document.getElementById('sucesso-container').classList.add('hidden');
+        document.getElementById('btn-gerar').innerText = "Gerar Pix";
+        document.getElementById('btn-gerar').disabled = false;
+    }
+
+    // --- LÓGICA DE API (GERAR E CHECAR PIX) ---
+    async function gerarPix() {
+        const btn = document.getElementById('btn-gerar');
+        btn.innerText = "Gerando...";
+        btn.disabled = true;
+
+        const payload = {
+            valor: document.getElementById('valor').value,
+            nome: document.getElementById('nome').value,
+            anonimo: document.getElementById('anonimo').checked,
+            mensagem: document.getElementById('mensagem').value
+        };
+
+        try {
+            const response = await fetch(`${API_URL}/gerar-pix`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if(response.ok) {
+                document.getElementById('form-container').classList.add('hidden');
+                document.getElementById('pix-container').classList.remove('hidden');
+                
+                document.getElementById('qr-image').src = data.qr_data.qrcode_image;
+                document.getElementById('copia-cola-text').innerText = data.qr_data.qrcode_text;
+
+                iniciarPolling(data.txid);
+            } else {
+                alert("Erro ao gerar Pix: " + (data.detail || "Erro desconhecido"));
+                resetForm();
+            }
+        } catch (error) {
+            alert("Erro de conexão com o servidor.");
+            resetForm();
+        }
+    }
+
+    function iniciarPolling(txid) {
+        pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`${API_URL}/status/${txid}`);
+                const data = await response.json();
+
+                if (data.status === "PAGO") {
+                    clearInterval(pollInterval);
+                    document.getElementById('pix-container').classList.add('hidden');
+                    document.getElementById('sucesso-container').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Erro no polling:", error);
+            }
+        }, 3000);
+    }
+
+    // --- LÓGICA DO MURAL DE DOAÇÕES ---
+    async function carregarDoacoes() {
+        const lista = document.getElementById('lista-doacoes');
+        lista.innerHTML = "<p>Carregando doações...</p>"; // Estado de loading
+
+        try {
+            const response = await fetch(`${API_URL}/doacoes`);
+            const data = await response.json();
+            
+            lista.innerHTML = ""; // Limpa o loading
+
+            if (data.doacoes.length === 0) {
+                lista.innerHTML = "<p>Nenhuma doação recebida ainda. Seja o primeiro!</p>";
+                return;
+            }
+
+            data.doacoes.forEach(doacao => {
+                // Formata o valor para moeda BRL
+                const valorFormatado = parseFloat(doacao.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                
+                // Trata mensagens vazias
+                const textoMensagem = doacao.mensagem ? `"${doacao.mensagem}"` : "Sem mensagem associada.";
+
+                // Cria o card dinâmico
+                const cardHtml = `
+                    <div class="donation-card">
+                        <div class="donation-header">
+                            <span class="donation-name">👤 ${doacao.nome}</span>
+                            <span class="donation-value">${valorFormatado}</span>
+                        </div>
+                        <div class="donation-msg">${textoMensagem}</div>
+                    </div>
+                `;
+                lista.innerHTML += cardHtml;
+            });
+
+        } catch (error) {
+            console.error("Erro ao carregar doações:", error);
+            lista.innerHTML = "<p style='color: red;'>Erro ao carregar o mural.</p>";
+        }
+    }
+</script>
+
+</body>
+</html>

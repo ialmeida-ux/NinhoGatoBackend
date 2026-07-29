@@ -1,1 +1,18 @@
+# Ambientes Virtuais
+.venv/
+venv/
+
+# Configurações da IDE
+.idea/
+
+# Cache e Bytecode do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Chaves e Certificados de Segurança
 *.pem
+*.p12
+
+# Banco de Dados Local
+database.json
