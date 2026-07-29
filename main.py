@@ -6,12 +6,17 @@ from gerencianet import Gerencianet
 import uuid
 from db_manager import init_db, get_transaction, save_transaction
 from typing import Optional
+import os
+from dotenv import load_dotenv
 
 # 4. NOVA ROTA: Listar apenas as doações pagas
 import json
 from db_manager import DB_FILE, db_lock
 
+load_dotenv()
 
+def str_to_bool(val: str) -> bool:
+    return str(val).lower() in ("true", "1", "t", "yes")
 
 app = FastAPI()
 
@@ -25,11 +30,15 @@ app.add_middleware(
 
 # Credenciais da Efí (Substitua pelos seus dados)
 credentials = {
-    'client_id': 'Client_Id_1306199cbabd9923eb4142aa4be25161ba6a649b',
-    'client_secret': 'Client_Secret_6a4ae380a739ec5aad281f4e112dc42a09b634e7',
-    'sandbox': True, # Mude para False em produção
-    'certificate': 'certificado.pem'
+    'client_id': os.environ.get('EFI_CLIENT_ID'),
+    'client_secret': os.environ.get('EFI_CLIENT_SECRET'),
+    'sandbox': str_to_bool(os.environ.get('EFI_SANDBOX', 'False')),
+    'certificate': os.environ.get('EFI_CERTIFICATE_PATH', 'certificado.pem')
 }
+
+# A variável que o corpo da requisição vai usar:
+PIX_KEY = os.environ.get('EFI_PIX_KEY')
+
 
 efi = Gerencianet(credentials)
 
@@ -41,6 +50,9 @@ class PixRequest(BaseModel):
     nome: Optional[str] = ""
     anonimo: bool = False
     mensagem: Optional[str] = ""
+
+def str_to_bool(val: str) -> bool:
+    return str(val).lower() in ("true", "1", "t", "yes")
 
 @app.get("/", response_class=HTMLResponse)
 def ler_index():
@@ -57,7 +69,7 @@ def gerar_pix(req: PixRequest):
     body = {
         "calendario": {"expiracao": 3600},
         "valor": {"original": req.valor},
-        "chave": "SUA_CHAVE_AQUI" # Mantenha sua chave real aqui
+        "chave": PIX_KEY 
     }
 
     try:
