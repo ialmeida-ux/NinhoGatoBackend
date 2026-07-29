@@ -119,7 +119,7 @@ def verificar_status(txid: str):
     return {"txid": txid, "status": tx_data["status"]}
 
 # Rota que a Efí chamará quando o Pix for pago
-@app.post("/webhook(/pix)?")
+@app.post("/webhook")
 async def efi_webhook(request: Request):
     payload = await request.json()
     
