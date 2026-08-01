@@ -50,14 +50,15 @@
     <h2>Apoie o Projeto</h2>
     
     <div id="form-container">
-        <div class="form-group checkbox-group">
-            <input type="checkbox" id="anonimo" onchange="toggleNome()">
-            <label for="anonimo" style="margin: 0;">Quero doar anonimamente</label>
-        </div>
 
         <div class="form-group">
             <label>Seu Nome</label>
             <input type="text" id="nome" placeholder="Digite seu nome">
+        </div>
+
+        <div class="form-group checkbox-group">
+            <input type="checkbox" id="anonimo" onchange="toggleNome()">
+            <label for="anonimo" style="margin: 0;">Quero doar anonimamente</label>
         </div>
 
         <div class="form-group">
@@ -229,7 +230,7 @@
             lista.innerHTML = "<p style='color: red;'>Erro ao carregar o mural.</p>";
         }
     }
-    
+
     function validarDoacao() {
     // 1. Pegamos os valores dos campos da tela
     const nomeInput = document.getElementById("nome").value.trim();
