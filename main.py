@@ -128,18 +128,40 @@ async def verificar_status(txid: str, db: AsyncSession = Depends(get_db)):
 @app.api_route("/webhook/pix/", methods=["GET", "POST"])
 async def efi_webhook(request: Request, token: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     
-    # 1. VALIDAÇÃO DE SEGURANÇA (Garante que só a Efí acesse)
     TOKEN_SECRETO = "ninhogato_seguro_2026"
     
-    # Alteramos aqui: aceita o token normal ou com o /pix colado pelo banco
     if token != TOKEN_SECRETO and token != f"{TOKEN_SECRETO}/pix":
-        print(f"Tentativa de acesso negada ao Webhook. Token inválido recebido: {token}")
-        raise HTTPException(status_code=403, detail="Acesso negado")
-
-    # 2. Se a Efí mandar um GET apenas para testar se a URL existe...
-    if request.method == "GET":
-        print("EFÍ FEZ UM PING DE VALIDAÇÃO (GET)")
         return {"status": "200 OK"}
+
+    if request.method == "GET":
+        return {"status": "200 OK"}
+    
+    try:
+        payload = await request.json()
+        
+        # 🔴 MÁGICA DA OBSERVABILIDADE: flush=True força o Render a exibir o log na mesma hora!
+        print("\n===================================", flush=True)
+        print("WEBHOOK RECEBIDO DA EFÍ:", payload, flush=True)
+        print("===================================\n", flush=True)
+    
+        if "pix" in payload:
+            for pagamento in payload["pix"]:
+                txid = pagamento.get("txid")
+                print(f"🔍 Buscando TXID no banco: {txid}", flush=True)
+                
+                if txid:
+                    # Tenta atualizar no banco
+                    tx_atualizada = await crud.marcar_pix_como_pago(db, txid)
+                    
+                    if tx_atualizada:
+                        print(f"✅ SUCESSO: Pix {txid} salvo como PAGO no banco!", flush=True)
+                    else:
+                        print(f"❌ ALERTA: TXID {txid} não existe no nosso banco de dados. (Foi pago um código antigo?)", flush=True)
+                        
+    except Exception as e:
+        print(f"❌ ERRO CRÍTICO NO WEBHOOK: {e}", flush=True)
+            
+    return {"status": "200 OK"}
 
 # 5. LISTAR DOAÇÕES PAGAS (PARA O MURAL)
 @app.get("/doacoes")
