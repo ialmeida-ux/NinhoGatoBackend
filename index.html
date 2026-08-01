@@ -229,6 +229,22 @@
             lista.innerHTML = "<p style='color: red;'>Erro ao carregar o mural.</p>";
         }
     }
+    
+    function validarDoacao() {
+    // 1. Pegamos os valores dos campos da tela
+    const nomeInput = document.getElementById("nome").value.trim();
+    const checkboxAnonimo = document.getElementById("anonimo").checked;
+
+    // 2. A Regra de Negócio: Se o nome estiver vazio E a caixa não estiver marcada
+    if (nomeInput === "" && checkboxAnonimo === false) {
+        // Mostramos um aviso amigável na tela
+        alert("Por favor, preencha o seu nome ou marque a caixa 'Doador Anônimo' para continuar.");
+        return false; // Bloqueia a continuação do código
+    }
+    
+    // Se passar pela trava, o código continua e chama a API do backend...
+    gerarPixNoBackend(); 
+}
 </script>
 
 </body>

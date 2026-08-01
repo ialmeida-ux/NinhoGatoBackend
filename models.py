@@ -8,6 +8,7 @@ class Transacao(Base):
     txid = Column(String, unique=True, index=True, nullable=False)
     status = Column(String, default="PENDENTE")
     payment = Column(Boolean, default=False)
+    anonimo = Column(Boolean, default=False)
     
     # Colunas adicionadas para o seu mural de doações
     valor = Column(String)

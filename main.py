@@ -65,6 +65,16 @@ def ler_index():
 # 2. GERAR O PIX
 @app.post("/gerar-pix")
 async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
+
+    nome_preenchido = req.nome.strip() if req.nome else ""
+    
+    if not nome_preenchido and not req.anonimo:
+        # Se os dois estiverem vazios, encerramos a requisição aqui mesmo com Erro 400
+        raise HTTPException(
+            status_code=400, 
+            detail="Para prosseguir, informe um nome ou selecione a opção de doação anônima."
+        )
+    
     txid = uuid.uuid4().hex
 
     body = {
@@ -92,16 +102,15 @@ async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
         if not qr_image or not qr_text:
             raise HTTPException(status_code=502, detail="Falha ao mapear os dados do QR Code retornados pela Efí.")
 
-        nome_doador = "Anônimo" if req.anonimo or not req.nome else req.nome.strip()
+        nome_real = req.nome.strip() if req.nome else ""
 
         transaction_data = {
             "status": "PENDENTE",
             "payment": False, 
+            "anonimo": req.anonimo, # 🔴 ENVIANDO A FLAG
             "valor": req.valor,
-            "nome": nome_doador,
-            "mensagem": req.mensagem,
-            "qrcode_image": qr_image,
-            "qrcode_text": qr_text
+            "nome": nome_real,
+            "mensagem": req.mensagem
         }
         
         # Salvando no PostgreSQL
@@ -166,13 +175,15 @@ async def efi_webhook(request: Request, token: Optional[str] = None, db: AsyncSe
 # 5. LISTAR DOAÇÕES PAGAS (PARA O MURAL)
 @app.get("/doacoes")
 async def listar_doacoes(db: AsyncSession = Depends(get_db)):
-    # Buscando diretamente a lista de transações pagas do banco
     transacoes = await crud.listar_doacoes_pagas(db)
     
     doacoes_pagas = []
     for info in transacoes:
+        # 🔴 REGRA DE NEGÓCIO: Só oculta na hora de mandar pro frontend!
+        nome_exibicao = "Doador Anônimo" if info.anonimo or not info.nome else info.nome
+        
         doacoes_pagas.append({
-            "nome": info.nome,
+            "nome": nome_exibicao,
             "valor": info.valor,
             "mensagem": info.mensagem
         })

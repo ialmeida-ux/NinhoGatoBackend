@@ -12,6 +12,7 @@ async def criar_transacao(db: AsyncSession, txid: str, dados: dict):
         txid=txid,
         status=dados.get("status", "PENDENTE"),
         payment=dados.get("payment", False),
+        anonimo=dados.get("anonimo", False),  
         valor=dados.get("valor"),
         nome=dados.get("nome"),
         mensagem=dados.get("mensagem"),
