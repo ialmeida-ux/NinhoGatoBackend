@@ -130,9 +130,10 @@ async def efi_webhook(request: Request, token: Optional[str] = None, db: AsyncSe
     
     # 1. VALIDAÇÃO DE SEGURANÇA (Garante que só a Efí acesse)
     TOKEN_SECRETO = "ninhogato_seguro_2026"
-    if token != TOKEN_SECRETO:
-        print("Tentativa de acesso negada ao Webhook. Token inválido.")
-        # Retornamos 403 Forbidden para quem tentar invadir a rota
+    
+    # Alteramos aqui: aceita o token normal ou com o /pix colado pelo banco
+    if token != TOKEN_SECRETO and token != f"{TOKEN_SECRETO}/pix":
+        print(f"Tentativa de acesso negada ao Webhook. Token inválido recebido: {token}")
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     # 2. Se a Efí mandar um GET apenas para testar se a URL existe...
