@@ -1,24 +1,34 @@
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from gerencianet import Gerencianet
 import uuid
-from db_manager import init_db, get_transaction, save_transaction
-from typing import Optional
 import os
+from typing import Optional
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 
-# 4. NOVA ROTA: Listar apenas as doações pagas
-import json
-from db_manager import DB_FILE, db_lock
+# Nossas novas importações de banco de dados
+from database import engine, get_db
+import models
+import crud
+from sqlalchemy.ext.asyncio import AsyncSession
 
 load_dotenv()
 
 def str_to_bool(val: str) -> bool:
     return str(val).lower() in ("true", "1", "t", "yes")
 
-app = FastAPI()
+# 1. INICIALIZAÇÃO E CRIAÇÃO DAS TABELAS NO BANCO
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Conecta no Render e cria a tabela do PostgreSQL se ela não existir
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+    yield 
+
+app = FastAPI(lifespan=lifespan)
 
 # Permite que o frontend HTML local chame a API
 app.add_middleware(
@@ -28,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Credenciais da Efí (Substitua pelos seus dados)
+# Credenciais da Efí
 credentials = {
     'client_id': os.environ.get('EFI_CLIENT_ID'),
     'client_secret': os.environ.get('EFI_CLIENT_SECRET'),
@@ -36,14 +46,8 @@ credentials = {
     'certificate': os.environ.get('EFI_CERTIFICATE_PATH', 'certificado.pem')
 }
 
-# A variável que o corpo da requisição vai usar:
 PIX_KEY = os.environ.get('EFI_PIX_KEY')
-
-
 efi = Gerencianet(credentials)
-
-# Inicializa o JSON vazio se não existir
-init_db()
 
 class PixRequest(BaseModel):
     valor: str
@@ -51,21 +55,16 @@ class PixRequest(BaseModel):
     anonimo: bool = False
     mensagem: Optional[str] = ""
 
-def str_to_bool(val: str) -> bool:
-    return str(val).lower() in ("true", "1", "t", "yes")
-
 @app.get("/", response_class=HTMLResponse)
 def ler_index():
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
-    
+# 2. GERAR O PIX
 @app.post("/gerar-pix")
-def gerar_pix(req: PixRequest):
+async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
     txid = uuid.uuid4().hex
 
-    # Como conversamos, o body do banco central não precisa do devedor 
-    # para a chave aleatória/email funcionar de forma anônima ou não
     body = {
         "calendario": {"expiracao": 3600},
         "valor": {"original": req.valor},
@@ -91,10 +90,8 @@ def gerar_pix(req: PixRequest):
         if not qr_image or not qr_text:
             raise HTTPException(status_code=502, detail="Falha ao mapear os dados do QR Code retornados pela Efí.")
 
-        # Lógica de negócio: Tratar nome anônimo
         nome_doador = "Anônimo" if req.anonimo or not req.nome else req.nome.strip()
 
-        # Salvando os novos campos, incluindo payment: False
         transaction_data = {
             "status": "PENDENTE",
             "payment": False, 
@@ -104,66 +101,64 @@ def gerar_pix(req: PixRequest):
             "qrcode_image": qr_image,
             "qrcode_text": qr_text
         }
-        save_transaction(txid, transaction_data)
+        
+        # Salvando no PostgreSQL
+        await crud.criar_transacao(db, txid, transaction_data)
 
         return {"txid": txid, "qr_data": transaction_data}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+# 3. VERIFICAR STATUS DO PIX
 @app.get("/status/{txid}")
-def verificar_status(txid: str):
-    tx_data = get_transaction(txid)
+async def verificar_status(txid: str, db: AsyncSession = Depends(get_db)):
+    # Buscando no PostgreSQL
+    tx_data = await crud.buscar_transacao_por_txid(db, txid)
     if not tx_data:
         raise HTTPException(status_code=404, detail="Transação não encontrada")
-    return {"txid": txid, "status": tx_data["status"]}
+    
+    return {"txid": txid, "status": tx_data.status}
 
-# Rota que a Efí chamará quando o Pix for pago
-# A nossa "Rede de Captura": Aceita GET, POST, com ou sem /pix, com ou sem barra final.
+# 4. WEBHOOK DA EFÍ (REDE DE CAPTURA)
 @app.api_route("/webhook", methods=["GET", "POST"])
 @app.api_route("/webhook/", methods=["GET", "POST"])
 @app.api_route("/webhook/pix", methods=["GET", "POST"])
 @app.api_route("/webhook/pix/", methods=["GET", "POST"])
-async def efi_webhook(request: Request):
-    # 1. Se a Efí mandar um GET apenas para testar se a URL existe, devolvemos 200 OK
+async def efi_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if request.method == "GET":
         print("EFÍ FEZ UM PING DE VALIDAÇÃO (GET)")
         return {"status": "200 OK"}
     
-    # 2. Se for um POST (o pagamento real chegando)
     try:
         payload = await request.json()
         print("WEBHOOK RECEBIDO DA EFÍ:", payload)
     
-        # A Efí envia um array 'pix' com os pagamentos recebidos
         if "pix" in payload:
             for pagamento in payload["pix"]:
                 txid = pagamento.get("txid")
                 if txid:
-                    tx_data = get_transaction(txid)
-                    if tx_data:
-                        tx_data["status"] = "PAGO"
-                        tx_data["payment"] = True # Flag que autoriza exibir no mural
-                        save_transaction(txid, tx_data)
+                    # Atualiza o status diretamente no PostgreSQL
+                    await crud.marcar_pix_como_pago(db, txid)
+                    print(f"Pix {txid} recebido e salvo como PAGO no banco!")
+                    
     except Exception as e:
             print("Erro interno ao processar o payload da Efí:", e)
             
     return {"status": "200 OK"}
 
+# 5. LISTAR DOAÇÕES PAGAS (PARA O MURAL)
 @app.get("/doacoes")
-def listar_doacoes():
-    with db_lock:
-        with open(DB_FILE, "r") as f:
-            data = json.load(f)
+async def listar_doacoes(db: AsyncSession = Depends(get_db)):
+    # Buscando diretamente a lista de transações pagas do banco
+    transacoes = await crud.listar_doacoes_pagas(db)
     
     doacoes_pagas = []
-    
-    for txid, info in data.items():
-        if info.get("payment") is True:
-            doacoes_pagas.append({
-                "nome": info.get("nome"),
-                "valor": info.get("valor"),
-                "mensagem": info.get("mensagem")
-            })
+    for info in transacoes:
+        doacoes_pagas.append({
+            "nome": info.nome,
+            "valor": info.valor,
+            "mensagem": info.mensagem
+        })
             
-    return {"doacoes": list(reversed(doacoes_pagas))}
+    return {"doacoes": doacoes_pagas}
