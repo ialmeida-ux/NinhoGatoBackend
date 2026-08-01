@@ -8,12 +8,14 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
+from typing import Optional
 
 # Nossas novas importações de banco de dados
 from database import engine, get_db
 import models
 import crud
 from sqlalchemy.ext.asyncio import AsyncSession
+
 
 load_dotenv()
 
@@ -120,32 +122,23 @@ async def verificar_status(txid: str, db: AsyncSession = Depends(get_db)):
     
     return {"txid": txid, "status": tx_data.status}
 
-# 4. WEBHOOK DA EFÍ (REDE DE CAPTURA)
 @app.api_route("/webhook", methods=["GET", "POST"])
 @app.api_route("/webhook/", methods=["GET", "POST"])
 @app.api_route("/webhook/pix", methods=["GET", "POST"])
 @app.api_route("/webhook/pix/", methods=["GET", "POST"])
-async def efi_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+async def efi_webhook(request: Request, token: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    
+    # 1. VALIDAÇÃO DE SEGURANÇA (Garante que só a Efí acesse)
+    TOKEN_SECRETO = "ninhogato_seguro_2026"
+    if token != TOKEN_SECRETO:
+        print("Tentativa de acesso negada ao Webhook. Token inválido.")
+        # Retornamos 403 Forbidden para quem tentar invadir a rota
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    # 2. Se a Efí mandar um GET apenas para testar se a URL existe...
     if request.method == "GET":
         print("EFÍ FEZ UM PING DE VALIDAÇÃO (GET)")
         return {"status": "200 OK"}
-    
-    try:
-        payload = await request.json()
-        print("WEBHOOK RECEBIDO DA EFÍ:", payload)
-    
-        if "pix" in payload:
-            for pagamento in payload["pix"]:
-                txid = pagamento.get("txid")
-                if txid:
-                    # Atualiza o status diretamente no PostgreSQL
-                    await crud.marcar_pix_como_pago(db, txid)
-                    print(f"Pix {txid} recebido e salvo como PAGO no banco!")
-                    
-    except Exception as e:
-            print("Erro interno ao processar o payload da Efí:", e)
-            
-    return {"status": "200 OK"}
 
 # 5. LISTAR DOAÇÕES PAGAS (PARA O MURAL)
 @app.get("/doacoes")
