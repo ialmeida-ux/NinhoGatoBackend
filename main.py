@@ -178,14 +178,25 @@ async def listar_doacoes(db: AsyncSession = Depends(get_db)):
     transacoes = await crud.listar_doacoes_pagas(db)
     
     doacoes_pagas = []
+    total_arrecadado = 0.0 # 🔴 Variável para guardar a soma
+    
     for info in transacoes:
-        # 🔴 REGRA DE NEGÓCIO: Só oculta na hora de mandar pro frontend!
         nome_exibicao = "Doador Anônimo" if info.anonimo or not info.nome else info.nome
         
+        # Converte a string "10.00" ou "10,00" para float e soma
+        try:
+            valor_limpo = info.valor.replace(',', '.')
+            total_arrecadado += float(valor_limpo)
+        except ValueError:
+            pass # Ignora se houver algum erro de formatação em doações antigas
+            
         doacoes_pagas.append({
             "nome": nome_exibicao,
             "valor": info.valor,
             "mensagem": info.mensagem
         })
             
-    return {"doacoes": doacoes_pagas}
+    return {
+        "doacoes": doacoes_pagas,
+        "total_arrecadado": total_arrecadado # 🔴 Enviando o total consolidado
+    }
