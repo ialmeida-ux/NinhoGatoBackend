@@ -8,7 +8,7 @@ load_dotenv()
 credentials = {
     'client_id': os.environ.get('EFI_CLIENT_ID'),
     'client_secret': os.environ.get('EFI_CLIENT_SECRET'),
-    'sandbox': True, 
+    'sandbox': False, 
     'certificate': os.environ.get('EFI_CERTIFICATE_PATH', 'certificado.pem')
 }
 
