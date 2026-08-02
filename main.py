@@ -77,9 +77,12 @@ async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
     
     txid = uuid.uuid4().hex
 
+    # Garante que o valor tenha sempre o formato decimal correto (ex: "20.00" ou "0.01") exigido pela Efí
+    valor_formatado = f"{float(req.valor.replace(',', '.')):.2f}"
+
     body = {
         "calendario": {"expiracao": 3600},
-        "valor": {"original": req.valor},
+        "valor": {"original": valor_formatado},
         "chave": PIX_KEY 
     }
 
@@ -115,6 +118,13 @@ async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
         
         # Salvando no PostgreSQL
         await crud.criar_transacao(db, txid, transaction_data)
+
+        return {
+            "txid": txid, 
+            "qrcode_image": qr_image, 
+            "qrcode_text": qr_text, 
+            "qr_data": transaction_data
+        }
 
         return {"txid": txid, "qr_data": transaction_data}
 
