@@ -119,7 +119,16 @@ async def gerar_pix(req: PixRequest, db: AsyncSession = Depends(get_db)):
         return {"txid": txid, "qr_data": transaction_data}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # 🔴 ISSO VAI FORÇAR O RENDER A MOSTRAR O ERRO
+        print(f"=====================================")
+        print(f"ERRO FATAL NA GERAÇÃO DO PIX: {str(e)}")
+        print(f"=====================================")
+        
+        # Devolvemos o erro técnico para a tela para facilitar
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro interno: {str(e)}"
+        )
     
 # 3. VERIFICAR STATUS DO PIX
 @app.get("/status/{txid}")
